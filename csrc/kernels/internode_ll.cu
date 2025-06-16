@@ -275,7 +275,7 @@ dispatch(void* packed_recv_x, void* packed_recv_x_scales,
         // Wait tokens to arrive
         // NOTES: using sub-warp 1 to overlap with sub-warp 0
         int num_recv_tokens, recv_token_begin_idx;
-        EP_DEVICE_ASSERT(num_warps_per_group > 1);
+        EP_DEVICE_ASSERT(num_warps_per_group > 1 and num_warp_groups < 15);
         if (sub_warp_id == 1 and lane_id == 0) {
             while ((num_recv_tokens = ld_acquire_sys_global(rdma_recv_count + local_expert_idx * num_ranks + src_rank)) == 0);
             num_recv_tokens = -num_recv_tokens - 1;
@@ -476,7 +476,7 @@ combine(void* combined_x,
         }
 
         // Put the finishing flag
-        EP_DEVICE_ASSERT(num_warps_per_group > 1);
+        EP_DEVICE_ASSERT(num_warps_per_group > 1 and num_warp_groups < 16);
         asm volatile("bar.sync %0, %1;" :: "r"(warp_group_id + 1), "r"(num_warps_per_group * 32));
         if (sub_warp_id == 1 and lane_id == 0) {
             while (ld_acquire_global(atomic_clean_flag) == 0);
