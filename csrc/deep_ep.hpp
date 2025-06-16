@@ -71,10 +71,6 @@ private:
     volatile int* moe_recv_rdma_counter = nullptr;
     int* moe_recv_rdma_counter_mapped = nullptr;
 
-    // Host-side low-latency kernels' usages
-    volatile int* low_latency_usage_flag = nullptr;
-    int* low_latency_usage_flag_mapped = nullptr;
-
 public:
     Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode);
 
@@ -133,8 +129,6 @@ public:
                       const torch::Tensor& rdma_channel_prefix_matrix, const torch::Tensor& rdma_rank_prefix_sum, const torch::Tensor& gbl_channel_prefix_matrix,
                       const torch::Tensor& combined_rdma_head, const torch::Tensor& combined_nvl_head,
                       const Config& config, std::optional<EventHandle>& previous_event, bool async, bool allocate_on_comm_stream);
-
-    uint64_t get_low_latency_usage_flag() const;
 
     void clean_low_latency_buffer(int num_max_dispatch_tokens_per_rank, int hidden, int num_experts);
 

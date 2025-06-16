@@ -78,13 +78,6 @@ Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_
         CUDA_CHECK(cudaHostGetDevicePointer(&moe_recv_rdma_counter_mapped, const_cast<int*>(moe_recv_rdma_counter), 0));
         *moe_recv_rdma_counter = -1;
     }
-
-    // Low-latency kernels' usage flag
-    if (low_latency_mode) {
-        CUDA_CHECK(cudaMallocHost(&low_latency_usage_flag, sizeof(int), cudaHostAllocMapped));
-        CUDA_CHECK(cudaHostGetDevicePointer(&low_latency_usage_flag_mapped, const_cast<int*>(low_latency_usage_flag), 0));
-        *low_latency_usage_flag = 0;
-    }
 }
 
 Buffer::~Buffer() noexcept(false) {
@@ -1028,16 +1021,6 @@ Buffer::internode_combine(const torch::Tensor& x, const std::optional<torch::Ten
 #endif
 }
 
-uint64_t Buffer::get_low_latency_usage_flag() const {
-#ifndef DISABLE_NVSHMEM
-    EP_HOST_ASSERT(low_latency_usage_flag != nullptr);
-    return reinterpret_cast<uint64_t>(low_latency_usage_flag);
-#else
-    EP_HOST_ASSERT(false and "NVSHMEM is disable during compilation");
-    return 0;
-#endif
-}
-
 void Buffer::clean_low_latency_buffer(int num_max_dispatch_tokens_per_rank, int hidden, int num_experts) {
 #ifndef DISABLE_NVSHMEM
     EP_HOST_ASSERT(low_latency_mode);
@@ -1143,9 +1126,8 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
                                num_tokens, hidden, num_max_dispatch_tokens_per_rank,
                                num_topk, num_experts, rank, num_ranks,
                                use_fp8, round_scale, use_ue8m0,
-                               workspace, low_latency_usage_flag_mapped,
-                               num_device_sms, launch_stream,
-                               phases);
+                               workspace, num_device_sms,
+                               launch_stream, phases);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
@@ -1237,9 +1219,8 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
                               next_clean_meta.first, next_clean_meta.second,
                               num_combined_tokens, hidden, num_max_dispatch_tokens_per_rank,
                               num_topk, num_experts, rank, num_ranks,
-                              workspace, low_latency_usage_flag_mapped,
-                              num_device_sms, launch_stream,
-                              phases, zero_copy);
+                              workspace, num_device_sms,
+                              launch_stream, phases, zero_copy);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
@@ -1328,7 +1309,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("intranode_combine", &deep_ep::Buffer::intranode_combine)
         .def("internode_dispatch", &deep_ep::Buffer::internode_dispatch)
         .def("internode_combine", &deep_ep::Buffer::internode_combine)
-        .def("get_low_latency_usage_flag", &deep_ep::Buffer::get_low_latency_usage_flag)
         .def("clean_low_latency_buffer", &deep_ep::Buffer::clean_low_latency_buffer)
         .def("low_latency_dispatch", &deep_ep::Buffer::low_latency_dispatch)
         .def("low_latency_combine", &deep_ep::Buffer::low_latency_combine)

@@ -48,9 +48,8 @@ dispatch(void* packed_recv_x, void* packed_recv_x_scales,
          int* next_clean, int num_next_clean_int,
          int num_tokens, int num_max_dispatch_tokens_per_rank,
          int num_topk, int num_experts, int rank, int num_ranks,
-         bool round_scale, int* usage_flag,
          int num_warp_groups, int num_warps_per_group,
-         int phases) {
+         bool round_scale, int phases) {
     const auto sm_id = static_cast<int>(blockIdx.x);
     const auto thread_id = static_cast<int>(threadIdx.x);
     const auto warp_id = thread_id / 32, lane_id = get_lane_id();
@@ -189,10 +188,6 @@ dispatch(void* packed_recv_x, void* packed_recv_x_scales,
             #pragma unroll
             for (int i = lane_id; i < num_experts; i += 32)
                 atomic_add_release_global(atomic_finish_counter_per_expert + i, FINISHED_SUM_TAG);
-        } else if (sm_id == 1) {
-            // The second SM is also responsible for notifying PCIe usage
-            if (lane_id == 0)
-                atomicAdd_system(usage_flag, 1);
         }
 
         // This SM should be responsible for some destination experts, read `topk_idx` for them
@@ -341,9 +336,8 @@ void dispatch(void* packed_recv_x, void* packed_recv_x_scales,
               int num_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
               int num_topk, int num_experts, int rank, int num_ranks,
               bool use_fp8, bool round_scale, bool use_ue8m0,
-              void* workspace, int* usage_flag,
-              int num_device_sms, cudaStream_t stream,
-              int phases) {
+              void* workspace, int num_device_sms,
+              cudaStream_t stream, int phases) {
     constexpr int kNumMaxTopK = 9;
     const int num_warp_groups = ceil_div(num_experts, num_device_sms);
     const int num_warps_per_group = 32 / num_warp_groups;
@@ -380,9 +374,8 @@ LAUNCH_KERNEL(&cfg, dispatch_func, \
               next_clean, num_next_clean_int, \
               num_tokens, num_max_dispatch_tokens_per_rank, \
               num_topk, num_experts, rank, num_ranks, \
-              round_scale, usage_flag, \
               num_warp_groups, num_warps_per_group, \
-              phases); } break
+              round_scale, phases); } break
 
     SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream);
     SWITCH_HIDDEN(DISPATCH_LAUNCH_CASE);
@@ -400,7 +393,6 @@ combine(void* combined_x,
         int num_combined_tokens, int hidden, int num_topk,
         int num_max_dispatch_tokens_per_rank,
         int num_experts, int rank, int num_ranks,
-        int* usage_flag,
         int num_warp_groups, int num_warps_per_group,
         int phases, bool zero_copy) {
     const auto sm_id = static_cast<int>(blockIdx.x);
@@ -497,13 +489,11 @@ combine(void* combined_x,
     if ((phases & LOW_LATENCY_RECV_PHASE) == 0)
         return;
 
-    // Wait all ranks to arrive and notify usages
+    // Wait all ranks to arrive
     if (responsible_expert_idx < num_experts) {
         EP_DEVICE_ASSERT(num_warps_per_group > 1);
         if (sub_warp_id == 0 and lane_id == 0) {
             while (ld_acquire_sys_global(rdma_recv_flag + responsible_expert_idx) == 0);
-        } else if (sm_id == 0 and sub_warp_id == 1 and lane_id == 0) {
-            atomicAdd_system(usage_flag, 1);
         }
     }
     cg::this_grid().sync();
@@ -555,9 +545,8 @@ void combine(void* combined_x,
              int* next_clean, int num_next_clean_int,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
              int num_topk, int num_experts, int rank, int num_ranks,
-             void* workspace, int* usage_flag,
-             int num_device_sms, cudaStream_t stream,
-             int phases, bool zero_copy) {
+             void* workspace, int num_device_sms,
+             cudaStream_t stream, int phases, bool zero_copy) {
     constexpr int kNumMaxTopk = 9;
     const int num_warp_groups = ceil_div(num_experts, num_device_sms);
     const int num_warps_per_group = 32 / num_warp_groups;
@@ -582,7 +571,6 @@ LAUNCH_KERNEL(&cfg, combine_func, \
               num_combined_tokens, hidden, num_topk, \
               num_max_dispatch_tokens_per_rank, \
               num_experts, rank, num_ranks, \
-              usage_flag, \
               num_warp_groups, num_warps_per_group, \
               phases, zero_copy); } break
 
