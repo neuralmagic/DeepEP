@@ -793,7 +793,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
             if (lane_id == 0) {
                 nvshmemi_ibgda_amo_nonfetch_add(rdma_channel_head.buffer(rdma_rank),
                                                 cached_rdma_channel_tail - cached_rdma_channel_head,
-                                                translate_dst_rdma_rank<kLowLatencyMode>(lane_id, nvl_rank),
+                                                translate_dst_rdma_rank<kLowLatencyMode>(src_rdma_rank, nvl_rank),
                                                 channel_id + num_channels, src_rdma_rank == rdma_rank);
                 cached_rdma_channel_head = cached_rdma_channel_tail;
             }
