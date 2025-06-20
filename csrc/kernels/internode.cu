@@ -402,7 +402,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
     // NVL buffer layouts
     // NOTES: `rs_wr_buffer_ptr` means "Read for Senders, Write for Receivers", `ws_rr_buffer_ptr` means "Write for Senders, Read for Receivers"
     int rs_wr_rank = 0, ws_rr_rank = 0;
-    if (warp_role == WarpRole::kRDMAAndNVLForwarder)
+    if (warp_role == WarpRole::kRDMAAndNVLForwarder or warp_role == WarpRole::kForwarderCoordinator)
         rs_wr_rank = nvl_rank, ws_rr_rank = lane_id < NUM_MAX_NVL_PEERS ? lane_id : 0;
     if (warp_role == WarpRole::kNVLReceivers)
         rs_wr_rank = target_rank, ws_rr_rank = nvl_rank;
@@ -595,7 +595,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
         while (__any_sync(0xffffffff, num_tokens_to_send > 0)) {
             // Timeout check
             if (clock64() - start_time > NUM_TIMEOUT_CYCLES and lane_id < kNumRDMARanks) {
-                printf("DeepEP RDMA sender coordinator timeout, channel: %d, IB: %d, nvl %d, dst IB: %d, tail %d, num_tokens_to_send %d\n",
+                printf("DeepEP RDMA sender coordinator timeout, channel: %d, IB: %d, nvl %d, dst IB: %d, tail: %d, tokens to send: %d\n",
                        channel_id, rdma_rank, nvl_rank, lane_id, last_issued_tail, num_tokens_to_send);
                 trap();
             }

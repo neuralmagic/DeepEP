@@ -78,7 +78,6 @@ cfg.dynamicSmemBytes = smem_size;
 #define SWITCH_TYPES(case_macro) \
     switch (type) { \
         case CUDA_R_16BF: case_macro(nv_bfloat16); \
-        case CUDA_R_32F:  case_macro(float); \
         default: EP_HOST_ASSERT(false && "Unsupported type"); \
     } while (false)
 
