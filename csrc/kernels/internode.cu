@@ -799,6 +799,10 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
             }
             __syncwarp();
         }
+
+        // Retire
+        if (lane_id == 0)
+            forward_channel_retired[src_rdma_rank] = 1;
     } else if (warp_role == WarpRole::kForwarderCoordinator) {
         // Forward warp coordinator
         EP_STATIC_ASSERT(kNumRDMARanks <= 32, "Invalid number of RDMA peers");
