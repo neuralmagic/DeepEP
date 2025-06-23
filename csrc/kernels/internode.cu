@@ -475,7 +475,7 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
             // Acquire a tail
             int rdma_tail_idx = -1;
             if (is_token_in_rank_uint64 != 0) {
-                do {
+                while (true) {
                     // Acquire lock first
                     acquire_lock(rdma_send_channel_lock + lane_id);
 
@@ -495,11 +495,21 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
 
                     // Release lock
                     release_lock(rdma_send_channel_lock + lane_id);
-                } while (rdma_tail_idx == -1);
+                    break;
+                }
 
                 // Wait the remote buffer to be released
-                while (rdma_tail_idx - cached_rdma_channel_head >= num_max_rdma_chunked_recv_tokens)
+                auto start_time = clock64();
+                while (rdma_tail_idx - cached_rdma_channel_head >= num_max_rdma_chunked_recv_tokens) {
                     cached_rdma_channel_head = static_cast<int>(ld_volatile_global(rdma_channel_head.buffer(lane_id)));
+
+                    // Timeout check
+                    if (clock64() - start_time >= NUM_TIMEOUT_CYCLES) {
+                        printf("DeepEP dispatch RDMA sender timeout, channel: %d, RDMA: %d, nvl: %d, dst RDMA lane: %d, head: %d, tail: %d\n",
+                               channel_id, rdma_rank, nvl_rank, lane_id, cached_rdma_channel_head, rdma_tail_idx);
+                        trap();
+                    }
+                }
             }
             __syncwarp();
 
