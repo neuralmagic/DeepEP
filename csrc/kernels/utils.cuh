@@ -466,4 +466,26 @@ barrier_block(int** barrier_signal_ptrs, int rank) {
     __syncthreads();
 }
 
+__forceinline__ __device__ int atomic_cas_cta_acquire(int* addr, int x, int y) {
+    int ret;
+    asm volatile("atom.acquire.cta.shared::cta.cas.b32 %0, [%1], %2, %3;" : "=r"(ret) : "l"(addr), "r"(x), "r"(y) : "memory");
+    return ret;
+}
+
+__forceinline__ __device__ int atomic_exch_cta_release(int* addr, int x) {
+    int ret;
+    asm volatile("atom.release.cta.shared::cta.exch.b32 %0, [%1], %2;" : "=r"(ret) : "l"(addr), "r"(x) : "memory");
+    return ret;
+}
+
+__forceinline__ __device__ void acquire_lock(int* mutex) {
+    // To make later memory operations valid, we must use `acquire` for memory semantics
+    while (atomic_cas_cta_acquire(mutex, 0, 1) != 0);
+}
+
+__forceinline__ __device__ void release_lock(int* mutex) {
+    // To make previous memory operations visible to other threads, we must use `release` for memory semantics
+    atomic_exch_cta_release(mutex, 0);
+}
+
 } // namespace deep_ep
