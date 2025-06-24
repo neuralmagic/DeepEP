@@ -446,7 +446,6 @@ barrier_block(int** barrier_signal_ptrs, int rank) {
     // Add self-ranks, sub other ranks
     if (thread_id < kNumRanks) {
         atomicAdd_system(barrier_signal_ptrs[rank] + thread_id, FINISHED_SUM_TAG);
-        memory_fence();
         atomicSub_system(barrier_signal_ptrs[thread_id] + rank, FINISHED_SUM_TAG);
     }
     EP_DEVICE_ASSERT(kNumRanks <= blockDim.x);

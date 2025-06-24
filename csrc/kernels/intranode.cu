@@ -41,6 +41,7 @@ notify_dispatch(const int* num_tokens_per_rank, int* moe_recv_counter_mapped,
             for (int i = 0; i < num_experts_per_rank; ++ i)
                 per_expert_buffer[rank * num_experts_per_rank + i] = num_tokens_per_expert[thread_id * num_experts_per_rank + i];
         }
+        memory_fence();
         __syncthreads();
 
         // Wait for all ranks to be finished
