@@ -80,6 +80,7 @@ cfg.dynamicSmemBytes = smem_size;
 
 #define SWITCH_HIDDEN(case_macro) \
     switch (hidden) { \
+        case 2048: case_macro(2048); \
         case 2560: case_macro(2560); \
         case 4096: case_macro(4096); \
         case 5120: case_macro(5120); \
