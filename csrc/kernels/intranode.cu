@@ -21,7 +21,7 @@ notify_dispatch(const int* num_tokens_per_rank, int* moe_recv_counter_mapped,
 
     if (sm_id == 0) {
         // Barrier first
-        barrier_block<kNumRanks>(barrier_signal_ptrs, rank);
+        barrier_block<kNumRanks, false>(barrier_signal_ptrs, rank);
 
         int *per_rank_buffer, *per_expert_buffer;
         if (thread_id < kNumRanks) {
@@ -41,8 +41,6 @@ notify_dispatch(const int* num_tokens_per_rank, int* moe_recv_counter_mapped,
             for (int i = 0; i < num_experts_per_rank; ++ i)
                 per_expert_buffer[rank * num_experts_per_rank + i] = num_tokens_per_expert[thread_id * num_experts_per_rank + i];
         }
-        memory_fence();
-        __syncthreads();
 
         // Wait for all ranks to be finished
         barrier_block<kNumRanks>(barrier_signal_ptrs, rank);
@@ -81,8 +79,6 @@ notify_dispatch(const int* num_tokens_per_rank, int* moe_recv_counter_mapped,
             local_per_expert_buffer[i] = 0;
 
         // Barrier
-        memory_fence();
-        __syncthreads();
         barrier_block<kNumRanks>(barrier_signal_ptrs, rank);
     } else {
         int dst_rank = sm_id - 1;
@@ -138,7 +134,7 @@ __global__ void
 cached_notify_dispatch(const int* rank_prefix_matrix, int num_memset_int,
                        void** buffer_ptrs, int** barrier_signal_ptrs, int rank) {
     // A simplified version for cached handles
-    barrier_block<kNumRanks>(barrier_signal_ptrs, rank);
+    barrier_block<kNumRanks, false>(barrier_signal_ptrs, rank);
 
     // Copy and clean
     auto thread_id = static_cast<int>(threadIdx.x), num_threads = static_cast<int>(blockDim.x);
@@ -149,8 +145,6 @@ cached_notify_dispatch(const int* rank_prefix_matrix, int num_memset_int,
     #pragma unroll
     for (int i = thread_id; i < num_memset_int; i += num_threads)
         ptr[kNumRanks * kNumRanks + i] = 0;
-    memory_fence();
-    __syncthreads();
 
     // Barrier after cleaning
     barrier_block<kNumRanks>(barrier_signal_ptrs, rank);
@@ -521,7 +515,7 @@ cached_notify_combine(void** buffer_ptrs, int* send_head, int num_channels, int 
     const auto sm_id = static_cast<int>(blockIdx.x);
     if (sm_id == 0) {
         // Barrier before cleaning
-        barrier_block<kNumRanks>(barrier_signal_ptrs, rank);
+        barrier_block<kNumRanks, false>(barrier_signal_ptrs, rank);
 
         // Clean
         auto thread_id = static_cast<int>(threadIdx.x), num_threads = static_cast<int>(blockDim.x);
@@ -529,8 +523,6 @@ cached_notify_combine(void** buffer_ptrs, int* send_head, int num_channels, int 
         #pragma unroll
         for (int i = thread_id; i < num_memset_int; i += num_threads)
             ptr[i] = 0;
-        memory_fence();
-        __syncthreads();
 
         // Barrier after cleaning
         barrier_block<kNumRanks>(barrier_signal_ptrs, rank);

@@ -438,10 +438,13 @@ __forceinline__ __device__ out_dtype_t extract_required_scale_format(float value
     }
 }
 
-template <int kNumRanks>
+template <int kNumRanks, bool fence=true>
 __forceinline__ __device__ void
 barrier_block(int** barrier_signal_ptrs, int rank) {
     auto thread_id = static_cast<int>(threadIdx.x);
+
+    if (fence)
+        memory_fence();
 
     // Add self-ranks, sub other ranks
     if (thread_id < kNumRanks) {
