@@ -438,13 +438,16 @@ __forceinline__ __device__ out_dtype_t extract_required_scale_format(float value
     }
 }
 
-template <int kNumRanks, bool fence=true>
+template <int kNumRanks, bool kSyncOnly = false>
 __forceinline__ __device__ void
 barrier_block(int** barrier_signal_ptrs, int rank) {
     auto thread_id = static_cast<int>(threadIdx.x);
 
-    if (fence)
+    // For non-sync-only cases, the memory operations by other threads in the block must be visible to the `sys` scope
+    if constexpr (not kSyncOnly) {
         memory_fence();
+        __syncthreads();
+    }
 
     // Add self-ranks, sub other ranks
     if (thread_id < kNumRanks) {

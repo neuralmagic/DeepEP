@@ -99,7 +99,7 @@ notify_dispatch(const int* num_tokens_per_rank, int* moe_recv_counter_mapped, in
         EP_DEVICE_ASSERT(kNumRDMARanks <= num_threads);
         if (thread_id == 32)
             nvshmem_sync_with_same_gpu_idx<kLowLatencyMode>(rdma_team);
-        barrier_block<NUM_MAX_NVL_PEERS, false>(barrier_signal_ptrs, nvl_rank);
+        barrier_block<NUM_MAX_NVL_PEERS, true>(barrier_signal_ptrs, nvl_rank);
 
         // Send numbers of tokens per rank/expert to RDMA ranks
         auto rdma_buffer_ptr_int = static_cast<int*>(rdma_buffer_ptr);
@@ -1037,7 +1037,7 @@ __global__ void cached_notify(const int rdma_clean_offset, const int rdma_num_in
             nvshmem_sync_with_same_gpu_idx<kLowLatencyMode>(rdma_team);
     } else if (sm_id == 1) {
         // Barrier for NVL
-        barrier_block<NUM_MAX_NVL_PEERS, false>(barrier_signal_ptrs, nvl_rank);
+        barrier_block<NUM_MAX_NVL_PEERS, true>(barrier_signal_ptrs, nvl_rank);
 
         // Clean
         auto nvl_buffer_ptr_int = static_cast<int*>(buffer_ptrs[nvl_rank]);
