@@ -784,10 +784,13 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
                 int dst_slot_idx = (cached_nvl_channel_tail ++) % num_max_nvl_chunked_recv_tokens;
 
                 // Copy data
-                UNROLLED_WARP_COPY(5, lane_id, hidden_int4,
-                                   nvl_channel_x.buffer() + dst_slot_idx * hidden_int4,
-                                   reinterpret_cast<int4*>(shifted),
-                                   ld_nc_global, st_na_global);
+                if (lane_id == 0) {
+                    tma_load_1d(tma_buffer, static_cast<int4*>(shifted), tma_mbarrier, hidden_bytes, false);
+                    mbarrier_arrive_and_expect_tx(tma_mbarrier, hidden_bytes);
+                    mbarrier_wait(tma_mbarrier, tma_phase);
+                    tma_store_1d(tma_buffer, nvl_channel_x.buffer() + dst_slot_idx * hidden_int4, hidden_bytes);
+                }
+                __syncwarp();
                 shifted = static_cast<int4*>(shifted) + hidden_int4;
 
                 // Copy source meta
@@ -820,6 +823,11 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
                 // In case of insufficient NVL buffers, early stopping
                 if ((++ num_tokens_sent) == num_max_nvl_chunked_send_tokens)
                     src_rdma_tail = i + 1;
+
+                // Wait TMA to be finished
+                if (lane_id == 0)
+                    tma_store_wait();
+                __syncwarp();
             }
 
             // Sync head index
@@ -937,10 +945,13 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
                 (lane_id == meta.src_rdma_rank) ? (total_offset += 1) : 0;
 
                 // Copy data
-                UNROLLED_WARP_COPY(5, lane_id, hidden_int4,
-                                   recv_x + recv_token_idx * hidden_int4,
-                                   nvl_channel_x.buffer() + token_idx_in_buffer * hidden_int4,
-                                   ld_nc_global, st_na_global);
+                if (lane_id == 0) {
+                    tma_load_1d(tma_buffer, nvl_channel_x.buffer() + token_idx_in_buffer * hidden_int4, tma_mbarrier, hidden_bytes);
+                    mbarrier_arrive_and_expect_tx(tma_mbarrier, hidden_bytes);
+                    mbarrier_wait(tma_mbarrier, tma_phase);
+                    tma_store_1d(tma_buffer, recv_x + recv_token_idx * hidden_int4, hidden_bytes, false);
+                }
+                __syncwarp();
 
                 // Copy source meta
                 if (lane_id == 0 and not kCachedMode)
@@ -959,10 +970,14 @@ dispatch(int4* recv_x, float* recv_x_scales, int64_t* recv_topk_idx, float* recv
                     st_na_global(recv_topk_idx + recv_idx, static_cast<int64_t>(ld_nc_global(nvl_channel_topk_idx.buffer() + buffer_idx)));
                     st_na_global(recv_topk_weights + recv_idx, ld_nc_global(nvl_channel_topk_weights.buffer() + buffer_idx));
                 }
+
+                // Wait TMA to be finished
+                if (lane_id == 0)
+                    tma_store_wait();
+                __syncwarp();
             }
 
             // Move queue
-            __syncwarp();
             if (lane_id == 0)
                 st_relaxed_sys_global(nvl_channel_head.buffer(), cached_channel_head_idx);
         }
