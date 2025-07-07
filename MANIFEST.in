@@ -1,0 +1,5 @@
+include csrc/*.hpp
+include csrc/*.h
+include csrc/kernels/*.cuh
+include csrc/kernels/*.h
+recursive-include csrc *.hpp *.h *.cuh
