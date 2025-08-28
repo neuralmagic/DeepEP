@@ -52,8 +52,10 @@ def per_token_cast_to_fp8(x: torch.Tensor):
 
 
 def per_token_cast_back(x_fp8: torch.Tensor, x_scales: torch.Tensor):
+    if x_fp8.numel() == 0:
+        return x_fp8.to(torch.bfloat16)
     if x_scales.dtype == torch.int:
-        x_scales = x_scales.view(dtype=torch.int8).to(torch.int) << 23
+        x_scales = x_scales.view(dtype=torch.uint8).to(torch.int) << 23
         x_scales = x_scales.view(dtype=torch.float)
     x_fp32 = x_fp8.to(torch.float32).view(x_fp8.size(0), -1, 128)
     x_scales = x_scales.view(x_fp8.size(0), -1, 1)
@@ -171,6 +173,7 @@ def bench_kineto(fn, kernel_names: Union[str, tuple], num_tests: int = 30, suppr
                     dist.all_reduce(torch.ones(1, dtype=torch.float, device='cuda'))
                 for _ in range(num_tests):
                     fn()
+                torch.cuda.synchronize()
                 prof.step()
 
     # Parse the profiling table
@@ -219,4 +222,4 @@ def bench_kineto(fn, kernel_names: Union[str, tuple], num_tests: int = 30, suppr
 
 
 def hash_tensor(t: torch.Tensor):
-    return t.view(torch.int64).sum().item()
+    return t.view(torch.int).sum().item()

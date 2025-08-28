@@ -30,6 +30,19 @@ template<> struct VecInt<4> { using vec_t = int; };
 template<> struct VecInt<8> { using vec_t = int64_t; };
 template<> struct VecInt<16> { using vec_t = int4; };
 
+template <typename FuncT>
+struct PatternVisitor {
+    FuncT func;
+
+    __device__ __host__
+    explicit PatternVisitor(FuncT&& func): func(std::forward<FuncT>(func)) {}
+
+    __device__ __host__
+    auto operator [](const uint32_t& i) {
+        return func(i);
+    }
+};
+
 __device__ __forceinline__ void trap() {
     asm("trap;");
 }
@@ -145,7 +158,7 @@ __device__  __forceinline__ int64_t ld_volatile_global(const uint64_t *ptr) {
 #ifndef DISABLE_AGGRESSIVE_PTX_INSTRS
 #define LD_NC_FUNC "ld.global.nc.L1::no_allocate.L2::256B"
 #else
-#define LD_NC_FUNC "ld.volatile.global.L2::256B"
+#define LD_NC_FUNC "ld.volatile.global"
 #endif
 
 // `ld.global.nc.L1::no_allocate` will be translated into `LDG.E.NA.[width].CONSTANT` in SASS
@@ -266,8 +279,35 @@ __device__  __forceinline__ void st_na_global(const int4 *ptr, const int4& value
             ::"l"(ptr), "r"(value.x), "r"(value.y), "r"(value.z), "r"(value.w));
 }
 
+__device__  __forceinline__ float log2f_approx(const float &x) {
+    float ret;
+    asm volatile("lg2.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
+    return ret;
+}
+
+__device__  __forceinline__ float exp2f_approx(const float &x) {
+    float ret;
+    asm volatile("ex2.approx.f32 %0, %1;" : "=f"(ret) : "f"(x));
+    return ret;
+}
+
 // TMA PTX instructions
 #ifndef DISABLE_SM90_FEATURES
+
+__device__ __forceinline__ uint32_t elect_one_sync(int lane_id) {
+    uint32_t pred = 0;
+    asm volatile(
+      "{\n"
+      ".reg .b32 %%rx;\n"
+      ".reg .pred %%px;\n"
+      "      elect.sync %%rx|%%px, %2;\n"
+      "@%%px mov.s32 %1, 1;\n"
+      "      mov.s32 %0, %%rx;\n"
+      "}\n"
+      : "+r"(lane_id), "+r"(pred)
+      : "r"(0xffffffff));
+    return pred;
+}
 
 __device__ __forceinline__ void fence_view_async_shared() {
     asm volatile("fence.proxy.async.shared::cta; \n" :: );
@@ -282,8 +322,15 @@ __device__ __forceinline__ void mbarrier_init(uint64_t* mbar_ptr, uint32_t arriv
     asm volatile("mbarrier.init.shared::cta.b64 [%1], %0;" :: "r"(arrive_count), "r"(mbar_int_ptr));
 }
 
-__device__ __forceinline__ void mbarrier_wait(uint64_t* mbar_ptr, uint32_t& phase) {
+__device__ __forceinline__ void mbarrier_inval(uint64_t* mbar_ptr) {
     auto mbar_int_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(mbar_ptr));
+    asm volatile("mbarrier.inval.shared::cta.b64 [%0];" :: "r"(mbar_int_ptr));
+}
+
+template <bool kWithMultiStages = false>
+__device__ __forceinline__ void mbarrier_wait(uint64_t* mbar_ptr, uint32_t& phase, int stage_idx = 0) {
+    auto mbar_int_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(mbar_ptr));
+    const auto& wait = kWithMultiStages ? (phase >> stage_idx) & 1 : phase;
     asm volatile("{\n\t"
                  ".reg .pred       P1; \n\t"
                  "LAB_WAIT: \n\t"
@@ -291,13 +338,18 @@ __device__ __forceinline__ void mbarrier_wait(uint64_t* mbar_ptr, uint32_t& phas
                  "@P1 bra DONE; \n\t"
                  "bra     LAB_WAIT; \n\t"
                  "DONE: \n\t"
-                 "}" :: "r"(mbar_int_ptr), "r"(phase), "r"(0x989680));
-    phase ^= 1;
+                 "}" :: "r"(mbar_int_ptr), "r"(wait), "r"(0x989680));
+    phase ^= kWithMultiStages ? (1 << stage_idx) : 1;
 }
 
 __device__ __forceinline__ void mbarrier_arrive_and_expect_tx(uint64_t* mbar_ptr, int num_bytes) {
     auto mbar_int_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(mbar_ptr));
     asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%1], %0; \n\t" :: "r"(num_bytes), "r"(mbar_int_ptr));
+}
+
+__device__ __forceinline__ void mbarrier_arrive(uint64_t* mbar_ptr) {
+    auto mbar_int_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(mbar_ptr));
+    asm volatile("mbarrier.arrive.shared::cta.b64 _, [%0]; \n\t" :: "r"(mbar_int_ptr));
 }
 
 __device__ __forceinline__ void tma_store_fence() {
@@ -333,12 +385,12 @@ __device__ __forceinline__ void tma_store_wait() {
 #endif
 
 template <typename dtype_t>
-__host__ __device__ dtype_t ceil_div(dtype_t a, dtype_t b) {
+__host__ __device__ constexpr dtype_t ceil_div(dtype_t a, dtype_t b) {
     return (a + b - 1) / b;
 }
 
 template <typename dtype_t>
-__host__ __device__ dtype_t align(dtype_t a, dtype_t b) {
+__host__ __device__ constexpr dtype_t align(dtype_t a, dtype_t b) {
     return ceil_div<dtype_t>(a, b) * b;
 }
 
@@ -374,25 +426,6 @@ __device__ __forceinline__ dtype_t broadcast(dtype_t& ptr, int src_lane_idx) {
     for (int i = 0; i < sizeof(dtype_t) / sizeof(int); ++ i)
         recv_int_values[i] = __shfl_sync(0xffffffff, send_int_values[i], src_lane_idx);
     return *reinterpret_cast<dtype_t*>(recv_int_values);
-}
-
-__forceinline__ __device__ int warp_reduce_sum(int value) {
-    value += __shfl_xor_sync(0xffffffff, value, 16);
-    value += __shfl_xor_sync(0xffffffff, value, 8);
-    value += __shfl_xor_sync(0xffffffff, value, 4);
-    value += __shfl_xor_sync(0xffffffff, value, 2);
-    value += __shfl_xor_sync(0xffffffff, value, 1);
-    return value;
-}
-
-__forceinline__ __device__ float half_warp_reduce_max(float value) {
-    auto mask = __activemask();
-    // The mask be in `{0xffffffff, 0xffff}`
-    value = max(value, __shfl_xor_sync(mask, value, 8));
-    value = max(value, __shfl_xor_sync(mask, value, 4));
-    value = max(value, __shfl_xor_sync(mask, value, 2));
-    value = max(value, __shfl_xor_sync(mask, value, 1));
-    return value;
 }
 
 __forceinline__ __device__ int get_lane_id() {
@@ -463,8 +496,8 @@ barrier_block(int** barrier_signal_ptrs, int rank) {
         if (__all_sync(0xffffffff, value <= 0))
             break;
 
-        if (clock64() - start_time > NUM_TIMEOUT_CYCLES and get_lane_id() == 0) {
-            printf("DeepEP timeout check failed: rank = %d, thread = %d)\n", rank, thread_id);
+        if (clock64() - start_time > NUM_TIMEOUT_CYCLES and thread_id < kNumRanks) {
+            printf("DeepEP timeout check failed: rank = %d, thread = %d, value = %d)\n", rank, thread_id, value);
             trap();
         }
     }
@@ -491,6 +524,62 @@ __forceinline__ __device__ void acquire_lock(int* mutex) {
 __forceinline__ __device__ void release_lock(int* mutex) {
     // To make previous memory operations visible to other threads, we must use `release` for memory semantics
     atomic_exch_cta_release(mutex, 0);
+}
+
+// Operation functors
+template <typename T> struct ReduceSum { __device__ T operator()(T a, T b) const { return a + b; } };
+template <typename T> struct ReduceMax { __device__ T operator()(T a, T b) const { return a > b ? a : b; } };
+template <typename T> struct ReduceMin { __device__ T operator()(T a, T b) const { return a < b ? a : b; } };
+template <typename T> struct ReduceAnd { __device__ T operator()(T a, T b) const { return a & b; } };
+template <typename T> struct ReduceOr  { __device__ T operator()(T a, T b) const { return a | b; } };
+
+// Unified reduction function
+template <int kNumLanesPerGroup, bool kIntergroupReduce, typename T, typename Op>
+__forceinline__ __device__ T warp_reduce(T value, Op op) {
+    EP_STATIC_ASSERT(kNumLanesPerGroup == 32 or kNumLanesPerGroup == 16 or kNumLanesPerGroup == 8 or
+                     kNumLanesPerGroup ==  4 or kNumLanesPerGroup == 2  or kNumLanesPerGroup == 1,
+                     "Invalid number of lanes");
+    constexpr uint32_t mask = 0xffffffff;
+    if constexpr (kIntergroupReduce) {
+        if constexpr (kNumLanesPerGroup <=  1) value = op(value, __shfl_xor_sync(mask, value,  1));
+        if constexpr (kNumLanesPerGroup <=  2) value = op(value, __shfl_xor_sync(mask, value,  2));
+        if constexpr (kNumLanesPerGroup <=  4) value = op(value, __shfl_xor_sync(mask, value,  4));
+        if constexpr (kNumLanesPerGroup <=  8) value = op(value, __shfl_xor_sync(mask, value,  8));
+        if constexpr (kNumLanesPerGroup <= 16) value = op(value, __shfl_xor_sync(mask, value, 16));
+    } else {
+        if constexpr (kNumLanesPerGroup >= 32) value = op(value, __shfl_xor_sync(mask, value, 16));
+        if constexpr (kNumLanesPerGroup >= 16) value = op(value, __shfl_xor_sync(mask, value,  8));
+        if constexpr (kNumLanesPerGroup >=  8) value = op(value, __shfl_xor_sync(mask, value,  4));
+        if constexpr (kNumLanesPerGroup >=  4) value = op(value, __shfl_xor_sync(mask, value,  2));
+        if constexpr (kNumLanesPerGroup >=  2) value = op(value, __shfl_xor_sync(mask, value,  1));
+    }
+    return value;
+}
+
+// Convenience aliases
+template <int kNumLanesPerGroup = 32, bool kIntergroupReduce = false, typename T>
+__forceinline__ __device__ T warp_reduce_sum(T value) {
+    return warp_reduce<kNumLanesPerGroup, kIntergroupReduce, T>(value, ReduceSum<T>{});
+}
+
+template <int kNumLanesPerGroup = 32, bool kIntergroupReduce = false, typename T>
+__forceinline__ __device__ T warp_reduce_max(T value) {
+    return warp_reduce<kNumLanesPerGroup, kIntergroupReduce, T>(value, ReduceMax<T>{});
+}
+
+template <int kNumLanesPerGroup = 32, bool kIntergroupReduce = false, typename T>
+__forceinline__ __device__ T warp_reduce_min(T value) {
+    return warp_reduce<kNumLanesPerGroup, kIntergroupReduce, T>(value, ReduceMin<T>{});
+}
+
+template <int kNumLanesPerGroup = 32, bool kIntergroupReduce = false, typename T>
+__forceinline__ __device__ T warp_reduce_and(T value) {
+    return warp_reduce<kNumLanesPerGroup, kIntergroupReduce, T>(value, ReduceAnd<T>{});
+}
+
+template <int kNumLanesPerGroup = 32, bool kIntergroupReduce = false, typename T>
+__forceinline__ __device__ T warp_reduce_or(T value) {
+    return warp_reduce<kNumLanesPerGroup, kIntergroupReduce, T>(value, ReduceOr<T>{});
 }
 
 } // namespace deep_ep
