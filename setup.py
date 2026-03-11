@@ -6,7 +6,6 @@ import importlib
 from pathlib import Path
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-
 # Wheel specific: the wheels only include the soname of the host library `libnvshmem_host.so.X`
 def get_nvshmem_host_lib_name(base_dir):
     path = Path(base_dir).joinpath('lib')
@@ -106,15 +105,13 @@ if __name__ == '__main__':
     print(f' > NVSHMEM path: {nvshmem_dir}')
     print()
 
-    # noinspection PyBroadException
-    try:
-        cmd = ['git', 'rev-parse', '--short', 'HEAD']
-        revision = '+' + subprocess.check_output(cmd).decode('ascii').rstrip()
-    except Exception as _:
-        revision = ''
+    # Manual versions MUST be bumped each time
+    deepep_base_version = '1.2.1'
+    rhai_version = '1'
+    version = f'{deepep_base_version}+rhaiv.{rhai_version}'
 
     setuptools.setup(name='deep_ep',
-                     version='1.2.1' + revision,
+                     version=version,
                      packages=setuptools.find_packages(include=['deep_ep']),
                      ext_modules=[
                          CUDAExtension(name='deep_ep_cpp',
