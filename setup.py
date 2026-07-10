@@ -1,7 +1,6 @@
 import ast
 import re
 import os
-import subprocess
 import setuptools
 import importlib
 
@@ -31,19 +30,11 @@ def get_package_version():
         version_match = re.search(r'^__version__\s*=\s*(.*)$', f.read(), re.MULTILINE)
     public_version = ast.literal_eval(version_match.group(1))
 
-    # noinspection PyBroadException
-    try:
-        status_cmd = ['git', 'status', '--porcelain']
-        status_output = subprocess.check_output(status_cmd).decode('ascii').strip()
-        if status_output:
-            print(f'Warning: Git working directory is not clean. Uncommitted changes:\n{status_output}')
-            assert False, 'Git working directory is not clean'
-
-        cmd = ['git', 'rev-parse', '--short', 'HEAD']
-        revision = '+' + subprocess.check_output(cmd).decode('ascii').rstrip()
-    except:
-        revision = '+local'
-    return f'{public_version}{revision}'
+    # Midstream (ADR-170): the wheel version must match the mirror tag exactly,
+    # so pin the +rhaiv build number instead of appending a git revision.
+    # This MUST be bumped each time a new midstream tag is cut.
+    rhai_version = '0'
+    return f'{public_version}+rhaiv.{rhai_version}'
 
 
 class CustomBuildPy(build_py):
