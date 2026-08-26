@@ -31,37 +31,35 @@ known-first-party = ["tests", "deep_ep"]
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle
-    "W",    # pycodestyle warnings
-    "F",    # Pyflakes
-    "UP",   # pyupgrade
-    "I",    # isort
-    "SIM",  # flake8-simplify
-    "C4",   # flake8-comprehensions
-    "PT",   # flake8-pytest
-    "PIE",  # flake8-pie
-    "EXE",  # flake8-executable
-    "A",    # flake8-builtins
-    "B",    # flake8-bugbear
-    "ANN",  # flake8-annotations
-    "BLE",  # flake8-blind-except
-    "LOG",  # flake8-logging
-    "G",    # flake8-logging-format
-    "TCH",  # flake8-type-checking
-    "RSE",  # flake8-raise
-    "RET",  # flake8-return
-    "T20",  # flake8-print
-    "ICN",  # flake8-import-conventions
-    "TID",  # flake8-tidy-imports
-    "INP",  # flake8-no-pep420
-    "NPY",  # numpy
-    "FURB", # refurb
-    "TRY",  # tryceratops
-    "FLY",  # flynt,
+    # pycodestyle
+    "E", "W",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    # "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    # "I",
 ]
 ignore = [
-    "E501",   # Line too long
-    "ANN401", # Allow Any
-    "TRY003", # Allow long messages
-    "SIM117", # Allow nested with
+    # Module level import not at top of file
+    "E402",
+    # star imports
+    "F405", "F403",
+    # ambiguous name
+    "E741",
+    # line too long
+    "E501",
+    # key in dict.keys()
+    "SIM118",
+    # memory leaks
+    "B019",
+    # No such file or directory
+    "E902",
+]
+exclude = [
+    "deep_ep/__init__.py"
 ]

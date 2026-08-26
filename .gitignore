@@ -1,8 +1,28 @@
+# VS Code
 compile_commands.json
-.idea
-.DS_Store
-*.pyc
-build/
+.clangd
 .cache/
 .vscode/
+
+# macOS
+.DS_Store
+
+# JetBrains
+.idea
 */cmake-build-*/
+
+# Python
+*.pyc
+
+# Build
+build/
+*.so
+deep_ep.egg-info/
+dist/
+
+# Coredump
+coredump/
+
+# OpenCode
+.sisyphus/
+AGENTS.md
