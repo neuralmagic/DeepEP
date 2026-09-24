@@ -9,10 +9,12 @@ from setuptools.command.build_py import build_py
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
-persistent_env_names = ('EP_JIT_CACHE_DIR', 'EP_JIT_PRINT_COMPILER_COMMAND', 'EP_NUM_TOPK_IDX_BITS', 'EP_NCCL_ROOT_DIR')
+persistent_env_names = ('EP_JIT_CACHE_DIR', 'EP_JIT_PRINT_COMPILER_COMMAND',
+                        'EP_NUM_TOPK_IDX_BITS', 'EP_NCCL_ROOT_DIR')
 
 # Load discover module without triggering `deep_ep.__init__`
-find_pkgs_spec = importlib.util.spec_from_file_location('find_pkgs', os.path.join(current_dir, 'deep_ep', 'utils', 'find_pkgs.py'))
+find_pkgs_spec = importlib.util.spec_from_file_location(
+    'find_pkgs', os.path.join(current_dir, 'deep_ep', 'utils', 'find_pkgs.py'))
 find_pkgs = importlib.util.module_from_spec(find_pkgs_spec)
 find_pkgs_spec.loader.exec_module(find_pkgs)
 
@@ -48,7 +50,8 @@ def get_nccl_lib_name(base_dir):
 
 def get_package_version():
     with open(Path(current_dir) / 'deep_ep' / '__init__.py', 'r') as f:
-        version_match = re.search(r'^__version__\s*=\s*(.*)$', f.read(), re.MULTILINE)
+        version_match = re.search(r'^__version__\s*=\s*(.*)$', f.read(),
+                                  re.MULTILINE)
     public_version = ast.literal_eval(version_match.group(1))
 
     # Midstream (ADR-170): the wheel version must match the mirror tag exactly,
@@ -59,6 +62,7 @@ def get_package_version():
 
 
 class CustomBuildPy(build_py):
+
     def run(self):
         # Make clusters' cache setting default into `envs.py`
         self.generate_default_envs()
@@ -76,7 +80,8 @@ class CustomBuildPy(build_py):
         # Create temporary build directory
         build_include_dir = os.path.join(self.build_lib, 'deep_ep')
         os.makedirs(build_include_dir, exist_ok=True)
-        with open(os.path.join(self.build_lib, 'deep_ep', 'envs.py'), 'w') as f:
+        with open(os.path.join(self.build_lib, 'deep_ep', 'envs.py'),
+                  'w') as f:
             f.write(code)
 
 
@@ -86,12 +91,23 @@ if __name__ == '__main__':
     nccl_root_dir = find_pkgs.find_nccl_root()
 
     # `128,2417` is used to suppress warnings of `fmt`
-    cxx_flags = ['-O3', '-Wno-deprecated-declarations', '-Wno-unused-variable', '-Wno-sign-compare', '-Wno-reorder', '-Wno-attributes']
-    nvcc_flags = ['-O3', '-Xcompiler', '-O3', '--extended-lambda', '--diag-suppress=128,2417']
-    sources = ['csrc/python_api.cpp', 'csrc/kernels/legacy/layout.cu', 'csrc/kernels/legacy/intranode.cu']
-    include_dirs = [f'{current_dir}/deep_ep/include',
-                    f'{current_dir}/third-party/fmt/include',
-                    '/usr/local/cuda/include/cccl']
+    cxx_flags = [
+        '-O3', '-Wno-deprecated-declarations', '-Wno-unused-variable',
+        '-Wno-sign-compare', '-Wno-reorder', '-Wno-attributes'
+    ]
+    nvcc_flags = [
+        '-O3', '-Xcompiler', '-O3', '--extended-lambda',
+        '--diag-suppress=128,2417'
+    ]
+    sources = [
+        'csrc/python_api.cpp', 'csrc/kernels/legacy/layout.cu',
+        'csrc/kernels/legacy/intranode.cu'
+    ]
+    include_dirs = [
+        f'{current_dir}/deep_ep/include',
+        f'{current_dir}/third-party/fmt/include',
+        '/usr/local/cuda/include/cccl'
+    ]
     library_dirs = []
     nvcc_dlink = []
     extra_link_args = ['-lcuda']
@@ -100,19 +116,28 @@ if __name__ == '__main__':
     # like ``libnvshmem_host.so.3`` when NVSHMEM came from a pip wheel) so
     # that ``-l:NAME`` can resolve. The static device library always ships
     # under its canonical name, so it stays hard-coded.
-    sources.extend(['csrc/kernels/legacy/internode.cu', 'csrc/kernels/legacy/internode_ll.cu', 'csrc/kernels/backend/nvshmem.cu'])
+    sources.extend([
+        'csrc/kernels/legacy/internode.cu',
+        'csrc/kernels/legacy/internode_ll.cu',
+        'csrc/kernels/backend/nvshmem.cu'
+    ])
     include_dirs.extend([f'{nvshmem_root_dir}/include'])
     library_dirs.extend([f'{nvshmem_root_dir}/lib'])
-    nvcc_dlink.extend(['-dlink', f'-L{nvshmem_root_dir}/lib', '-lnvshmem_device'])
+    nvcc_dlink.extend(
+        ['-dlink', f'-L{nvshmem_root_dir}/lib', '-lnvshmem_device'])
     nvshmem_host_lib = get_nvshmem_host_lib_name(nvshmem_root_dir)
-    extra_link_args.extend([f'-l:{nvshmem_host_lib}', '-l:libnvshmem_device.a', f'-Wl,-rpath,{nvshmem_root_dir}/lib'])
+    extra_link_args.extend([
+        f'-l:{nvshmem_host_lib}', '-l:libnvshmem_device.a',
+        f'-Wl,-rpath,{nvshmem_root_dir}/lib'
+    ])
 
     # NCCL flags. Same story as NVSHMEM above — pip wheels ship
     # ``libnccl.so.2`` only, so resolve the real name dynamically.
     sources.extend(['csrc/kernels/backend/nccl.cu'])
     include_dirs.extend([f'{nccl_root_dir}/include'])
     nccl_lib = get_nccl_lib_name(nccl_root_dir)
-    extra_link_args.extend([f'-l:{nccl_lib}', f'-Wl,-rpath,{nccl_root_dir}/lib'])
+    extra_link_args.extend(
+        [f'-l:{nccl_lib}', f'-Wl,-rpath,{nccl_root_dir}/lib'])
 
     # CUDA driver sources
     sources.extend(['csrc/kernels/backend/cuda_driver.cu'])
@@ -120,20 +145,23 @@ if __name__ == '__main__':
     # TODO: remove these
     if int(os.getenv('DISABLE_SM90_FEATURES', 0)):
         # Prefer A100
-        os.environ['TORCH_CUDA_ARCH_LIST'] = os.getenv('TORCH_CUDA_ARCH_LIST', '8.0')
+        os.environ['TORCH_CUDA_ARCH_LIST'] = os.getenv('TORCH_CUDA_ARCH_LIST',
+                                                       '8.0')
 
         # Disable some SM90 features: FP8, launch methods, and TMA
         cxx_flags.append('-DDISABLE_SM90_FEATURES')
         nvcc_flags.append('-DDISABLE_SM90_FEATURES')
 
         # Disable internode and low-latency kernels
-        assert False, 'Not implemented'
+        raise AssertionError('Not implemented')
     else:
         # Prefer H800 series
-        os.environ['TORCH_CUDA_ARCH_LIST'] = os.getenv('TORCH_CUDA_ARCH_LIST', '9.0')
+        os.environ['TORCH_CUDA_ARCH_LIST'] = os.getenv('TORCH_CUDA_ARCH_LIST',
+                                                       '9.0')
 
         # CUDA 12 flags
-        nvcc_flags.extend(['-rdc=true', '--ptxas-options=--register-usage-level=10'])
+        nvcc_flags.extend(
+            ['-rdc=true', '--ptxas-options=--register-usage-level=10'])
 
     # Disable LD/ST tricks, as some CUDA version does not support `.L1::no_allocate`
     if os.environ['TORCH_CUDA_ARCH_LIST'].strip() != '9.0':
@@ -180,7 +208,7 @@ if __name__ == '__main__':
         if name in os.environ:
             persistent_envs.append((name, os.environ[name]))
     if len(persistent_envs) > 0:
-        print(f' > Persistent envs:')
+        print(' > Persistent envs:')
         for k, v in persistent_envs:
             print(f'   > {k}: {v}')
     print()
@@ -189,11 +217,9 @@ if __name__ == '__main__':
         name='deep_ep',
         version=get_package_version(),
         packages=setuptools.find_packages(include=['deep_ep', 'deep_ep.*']),
-        package_data={
-            'deep_ep': [
-                'include/deep_ep/**/*',
-            ]
-        },
+        package_data={'deep_ep': [
+            'include/deep_ep/**/*',
+        ]},
         ext_modules=[
             CUDAExtension(name='deep_ep._C',
                           include_dirs=include_dirs,
@@ -205,5 +231,4 @@ if __name__ == '__main__':
         cmdclass={
             'build_ext': BuildExtension,
             'build_py': CustomBuildPy
-        }
-    )
+        })
