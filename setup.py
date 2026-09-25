@@ -57,7 +57,7 @@ def get_package_version():
     # Midstream (ADR-170): the wheel version must match the mirror tag exactly,
     # so pin the +rhaiv build number instead of appending a git revision.
     # This MUST be bumped each time a new midstream tag is cut.
-    rhai_version = '0'
+    rhai_version = '4'
     return f'{public_version}+rhaiv.{rhai_version}'
 
 
