@@ -1,6 +1,6 @@
 [project]
 name = "deep-ep"
-version = "2.0.1"
+version = "2.0.1+rhaiv.4"
 description = "DeepSeek Efficient Parallel Processing"
 readme = "README.md"
 requires-python = ">=3.8"
