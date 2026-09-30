@@ -60,8 +60,7 @@ void free(void* ptr) {
     nvshmem_free(ptr);
 }
 
-void barrier(const bool& with_cpu_sync,
-             const std::optional<cudaStream_t>& stream_opt = std::nullopt) {
+void barrier(const bool& with_cpu_sync, const std::optional<cudaStream_t>& stream_opt = std::nullopt) {
     // Wait all streams to finish on this GPU
     if (with_cpu_sync)
         CUDA_RUNTIME_CHECK(cudaDeviceSynchronize());
@@ -78,10 +77,7 @@ void barrier(const bool& with_cpu_sync,
         CUDA_RUNTIME_CHECK(cudaDeviceSynchronize());
 }
 
-int init(const std::vector<uint8_t>& root_unique_id_val,
-         const int& rank,
-         const int& num_ranks,
-         const int& team_split_stride) {
+int init(const std::vector<uint8_t>& root_unique_id_val, const int& rank, const int& num_ranks, const int& team_split_stride) {
     // NVSHMEM's normal compatibility check allows an older device module to load
     // against a newer host library. Reject that combination when it crosses the
     // 3.5.19 RC QP layout transition used by the legacy IBGDA kernels.
