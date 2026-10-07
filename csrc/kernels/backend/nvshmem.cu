@@ -1,11 +1,20 @@
-#include <nvshmem.h>
-
 #include <cstring>
-#include <deep_ep/common/compiled.cuh>
-#include <deep_ep/common/exception.cuh>
 #include <optional>
 #include <sstream>
 #include <vector>
+
+// clang-format off
+// NOTES: `compiled.cuh` undefines the `__CUDA_NO_HALF_*` / `__CUDA_NO_BFLOAT16_*`
+// macros that Torch's `cpp_extension` injects on the nvcc command line. It must
+// be included *before* `nvshmem.h`, since NVSHMEM's `reduce.cuh` instantiates
+// half/bf16 arithmetic operators and will fail to compile if those macros are
+// still defined when it is parsed. Keep this include order; do not let
+// clang-format (or an IDE) re-sort it alphabetically.
+#include <deep_ep/common/compiled.cuh>
+#include <deep_ep/common/exception.cuh>
+
+#include <nvshmem.h>
+// clang-format on
 
 #if !defined(NVSHMEM_VENDOR_MAJOR_VERSION) || !defined(NVSHMEM_VENDOR_MINOR_VERSION) || !defined(NVSHMEM_VENDOR_PATCH_VERSION)
 #error "NVSHMEM vendor version macros are required"
